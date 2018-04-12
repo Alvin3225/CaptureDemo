@@ -25,8 +25,8 @@ public class MainActivity extends AppCompatActivity {
     private static final String[] VIDEO_PERMISSIONS = {
             Manifest.permission.CAMERA,
             Manifest.permission.RECORD_AUDIO,
-            Manifest.permission.CAPTURE_AUDIO_OUTPUT,
-            Manifest.permission.MODIFY_AUDIO_SETTINGS
+            Manifest.permission.MODIFY_AUDIO_SETTINGS,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
     };
 
     @Override
