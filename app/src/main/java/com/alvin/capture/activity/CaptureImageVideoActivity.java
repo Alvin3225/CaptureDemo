@@ -1,10 +1,12 @@
 package com.alvin.capture.activity;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.util.Log;
 import android.view.WindowManager;
 
@@ -34,6 +36,7 @@ public class CaptureImageVideoActivity extends Activity {
     private String imageUrl="";//拍路径
     private boolean isPhoto = false;//是否是照片
     private int[] videoSize = new int[2];//视频尺寸
+    private PowerManager.WakeLock mWakeLock;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -112,12 +115,38 @@ public class CaptureImageVideoActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
-        jCameraView.onResume();
+        if(jCameraView.getScreenCnt()==0 || !jCameraView.isCapEndPreview()){
+            jCameraView.onResume();
+        }else if(jCameraView.getScreenCnt()>0){
+            jCameraView.onScreenOn();
+        }
+        if (mWakeLock == null) {
+            //获取唤醒锁,保持屏幕常亮
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            mWakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "CaptureImageVideoActivity");
+            mWakeLock.acquire();
+        }
     }
 
     @Override
     protected void onPause() {
         super.onPause();
-        jCameraView.onPause();
+        if(jCameraView.isRecording()){
+            jCameraView.onRecordingScreenOff();
+        }else if(jCameraView.isCapEndPreview()){
+            jCameraView.onCaptureScreenOff();
+        }else{
+            jCameraView.onPause();
+        }
+        if (mWakeLock != null) {
+            mWakeLock.release();
+            mWakeLock = null;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        jCameraView.onDestroy();
     }
 }

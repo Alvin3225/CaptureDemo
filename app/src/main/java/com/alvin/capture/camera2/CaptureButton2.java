@@ -372,7 +372,11 @@ public class CaptureButton2 extends View {
         this.duration = duration;
         timer = new RecordCountDownTimer(duration, duration / 360);    //录制定时器
     }
-
+    //当录制视频锁屏，手指并没有抬起，所以不会触发ACTION_UP，此时强制停止录制，按钮状态也需要重置
+    public void forceStopRecord(){
+        timer.cancel(); //停止计时器
+        recordEnd();
+    }
     //设置最短录制时间
     public void setMinDuration(int duration) {
         this.min_duration = duration;

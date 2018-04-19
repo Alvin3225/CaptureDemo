@@ -359,4 +359,11 @@ public class CaptureButton extends View {
     public void resetState() {
         state = STATE_IDLE;
     }
+
+    //当录制视频锁屏，手指并没有抬起，所以不会触发ACTION_UP，此时强制停止录制，按钮状态也需要重置
+    public void forceStopRecord(){
+        removeCallbacks(longPressRunnable); //移除长按逻辑的Runnable
+        timer.cancel(); //停止计时器
+        recordEnd();
+    }
 }

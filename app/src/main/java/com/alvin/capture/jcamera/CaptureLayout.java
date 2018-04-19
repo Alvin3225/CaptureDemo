@@ -273,13 +273,18 @@ public class CaptureLayout extends FrameLayout {
         txt_tip.setGravity(Gravity.CENTER);
         txt_tip.setLayoutParams(txt_param);
 
-        this.addView(btn_capture);
-        this.addView(btn_cancel);
-        this.addView(btn_confirm);
-        this.addView(btn_return);
-        this.addView(iv_custom_left);
-        this.addView(iv_custom_right);
-        this.addView(txt_tip);
+        postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                addView(btn_capture);
+                addView(btn_cancel);
+                addView(btn_confirm);
+                addView(btn_return);
+                addView(iv_custom_left);
+                addView(iv_custom_right);
+                addView(txt_tip);
+            }
+        },300);
 
     }
 
@@ -299,6 +304,10 @@ public class CaptureLayout extends FrameLayout {
             iv_custom_right.setVisibility(VISIBLE);
     }
 
+    public void forceResetCaptureButtonStyle(){
+        btn_capture.forceStopRecord();
+        btn_capture.resetState();
+    }
 
     public void startAlphaAnimation() {
         if (isFirst) {

@@ -100,6 +100,10 @@ public class JCameraView extends FrameLayout implements CameraInterface.CameraOp
 
     public long recordTime = 0;//录制时间
 
+    private boolean recording = false;//正在录制
+    private int screenCnt;//锁屏次数
+    private boolean isCapEndPreview = false;//拍摄结束，处于预览界面
+
     public JCameraView(Context context) {
         this(context, null);
     }
@@ -163,16 +167,17 @@ public class JCameraView extends FrameLayout implements CameraInterface.CameraOp
 
             @Override
             public void recordStart() {
+                recording = true;
                 mSwitchCamera.setVisibility(INVISIBLE);
                 machine.record(mVideoView.getHolder().getSurface(), screenProp);
             }
 
             @Override
             public void recordShort(final long time) {
+                recording = false;
                 recordTime = 0;
                 mSwitchCamera.setVisibility(VISIBLE);
                 machine.capture();
-
                 /*mCaptureLayout.setTextWithAnimation("录制时间过短");
                 postDelayed(new Runnable() {
                     @Override
@@ -184,6 +189,7 @@ public class JCameraView extends FrameLayout implements CameraInterface.CameraOp
 
             @Override
             public void recordEnd(long time) {
+                recording = false;
                 recordTime = time;
                 machine.stopRecord(false, time);
             }
@@ -196,6 +202,7 @@ public class JCameraView extends FrameLayout implements CameraInterface.CameraOp
 
             @Override
             public void recordError() {
+                recording = false;
                 if (errorLisenter != null) {
                     errorLisenter.AudioPermissionError();
                 }
@@ -205,6 +212,8 @@ public class JCameraView extends FrameLayout implements CameraInterface.CameraOp
         mCaptureLayout.setTypeLisenter(new TypeListener() {
             @Override
             public void cancel() {
+                isCapEndPreview = false;
+                screenCnt = 0;
                 machine.cancle(mVideoView.getHolder(), screenProp);
             }
 
@@ -275,7 +284,11 @@ public class JCameraView extends FrameLayout implements CameraInterface.CameraOp
         CameraInterface.getInstance().isPreview(false);
         CameraInterface.getInstance().unregisterSensorManager(mContext);
     }
-
+    public void onDestroy(){
+        Log.i("","JCameraView onDestroy");
+        //resetState(TYPE_PICTURE);
+        CameraInterface.getInstance().doDestroyCamera();
+    }
     //SurfaceView生命周期
     @Override
     public void surfaceCreated(SurfaceHolder holder) {
@@ -446,6 +459,7 @@ public class JCameraView extends FrameLayout implements CameraInterface.CameraOp
 
     @Override
     public void showPicture(Bitmap bitmap, boolean isVertical) {
+        isCapEndPreview = true;
         if (isVertical) {
             mPhoto.setScaleType(ImageView.ScaleType.FIT_XY);
         } else {
@@ -461,6 +475,7 @@ public class JCameraView extends FrameLayout implements CameraInterface.CameraOp
     @Override
     public void playVideo(Bitmap firstFrame, final String url) {
         videoUrl = url;
+        isCapEndPreview = true;
         JCameraView.this.firstFrame = firstFrame;
         new Thread(new Runnable() {
             @RequiresApi(api = Build.VERSION_CODES.JELLY_BEAN)
@@ -549,7 +564,30 @@ public class JCameraView extends FrameLayout implements CameraInterface.CameraOp
         animSet.start();
         return true;
     }
-
+    //正在录制，手动锁屏
+    public void onRecordingScreenOff(){
+        screenCnt++;
+        mCaptureLayout.forceResetCaptureButtonStyle();
+        stopVideo();
+        mPhoto.setVisibility(INVISIBLE);
+        CameraInterface.getInstance().isPreview(false);
+        CameraInterface.getInstance().unregisterSensorManager(mContext);
+    }
+    //拍照预览时，锁屏
+    public void onCaptureScreenOff(){
+        screenCnt++;
+    }
+    //屏幕解锁
+    public void onScreenOn(){
+        mVideoView.setLayoutParams(new LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT));
+        CameraInterface.getInstance().registerSensorManager(mContext);
+        CameraInterface.getInstance().setSwitchView(mSwitchCamera);
+        if(!isCapEndPreview){
+            CameraInterface.getInstance().doStartPreview(mVideoView.getHolder(), screenProp);
+        }else{
+            playVideo(firstFrame,videoUrl);
+        }
+    }
     public void setLeftClickListener(ClickListener clickListener) {
         this.leftClickListener = clickListener;
     }
@@ -560,5 +598,17 @@ public class JCameraView extends FrameLayout implements CameraInterface.CameraOp
 
     public void setConfirmClickListener(ClickListener confirmClickListener){
         this.confirmClickListener = confirmClickListener;
+    }
+
+    public int getScreenCnt() {
+        return screenCnt;
+    }
+
+    public boolean isCapEndPreview() {
+        return isCapEndPreview;
+    }
+
+    public boolean isRecording() {
+        return recording;
     }
 }

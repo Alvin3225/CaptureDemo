@@ -101,35 +101,39 @@ public class CaptureLayout2 extends FrameLayout {
     }
 
     public void startTypeBtnAnimator() {
-        //拍照录制结果后的动画
-        if (this.iconLeft != 0)
-            iv_custom_left.setVisibility(GONE);
-        else
-            btn_return.setVisibility(GONE);
-        if (this.iconRight != 0)
-            iv_custom_right.setVisibility(GONE);
-        btn_capture.setVisibility(GONE);
-        btn_cancel.setVisibility(VISIBLE);
-        btn_confirm.setVisibility(VISIBLE);
-        btn_cancel.setClickable(false);
-        btn_confirm.setClickable(false);
-        ObjectAnimator animator_cancel = ObjectAnimator.ofFloat(btn_cancel, "translationX", layout_width / 4, 0);
-        ObjectAnimator animator_confirm = ObjectAnimator.ofFloat(btn_confirm, "translationX", -layout_width / 4, 0);
+        if(btn_cancel.getVisibility()==GONE && btn_confirm.getVisibility()==GONE){
+            //拍照录制结果后的动画
+            if (this.iconLeft != 0)
+                iv_custom_left.setVisibility(GONE);
+            else
+                btn_return.setVisibility(GONE);
+            if (this.iconRight != 0)
+                iv_custom_right.setVisibility(GONE);
+            btn_capture.setVisibility(GONE);
+            btn_cancel.setVisibility(VISIBLE);
+            btn_confirm.setVisibility(VISIBLE);
+            btn_cancel.setClickable(false);
+            btn_confirm.setClickable(false);
+            ObjectAnimator animator_cancel = ObjectAnimator.ofFloat(btn_cancel, "translationX", layout_width / 4, 0);
+            ObjectAnimator animator_confirm = ObjectAnimator.ofFloat(btn_confirm, "translationX", -layout_width / 4, 0);
 
-        AnimatorSet set = new AnimatorSet();
-        set.playTogether(animator_cancel, animator_confirm);
-        set.addListener(new AnimatorListenerAdapter() {
-            @Override
-            public void onAnimationEnd(Animator animation) {
-                super.onAnimationEnd(animation);
-                btn_cancel.setClickable(true);
-                btn_confirm.setClickable(true);
-            }
-        });
-        set.setDuration(200);
-        set.start();
+            AnimatorSet set = new AnimatorSet();
+            set.playTogether(animator_cancel, animator_confirm);
+            set.addListener(new AnimatorListenerAdapter() {
+                @Override
+                public void onAnimationEnd(Animator animation) {
+                    super.onAnimationEnd(animation);
+                    btn_cancel.setClickable(true);
+                    btn_confirm.setClickable(true);
+                }
+            });
+            set.setDuration(200);
+            set.start();
+        }
     }
-
+    public void forceStopRecord(){
+        btn_capture.forceStopRecord();
+    }
 
     private void initView() {
         setWillNotDraw(false);
@@ -167,8 +171,6 @@ public class CaptureLayout2 extends FrameLayout {
                 if (captureLisenter != null) {
                     captureLisenter.recordEnd(time);
                 }
-                startAlphaAnimation();
-                startTypeBtnAnimator();
             }
 
             @Override

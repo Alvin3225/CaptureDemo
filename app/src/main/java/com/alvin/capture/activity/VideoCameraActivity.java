@@ -23,6 +23,7 @@ import android.hardware.camera2.CameraMetadata;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.CamcorderProfile;
 import android.media.Image;
 import android.media.ImageReader;
 import android.media.MediaPlayer;
@@ -101,7 +102,6 @@ public class VideoCameraActivity extends Activity {
     //摄像头相关
     private CameraDevice mCameraDevice;
     private CameraCaptureSession mPreviewSession;
-    private CaptureRequest mCaptureRequest;
     private CaptureRequest.Builder mPreviewBuilder;
     private ImageReader mImageReader;//捕获图片
     private CameraCharacteristics characteristics;
@@ -148,6 +148,9 @@ public class VideoCameraActivity extends Activity {
         INVERSE_ORIENTATIONS.append(Surface.ROTATION_180, 90);
         INVERSE_ORIENTATIONS.append(Surface.ROTATION_270, 0);
     }
+
+    private int resumeCnt;//onresume调用次数，用于人为锁屏，返回桌面操作判断
+    private boolean isPreviewing;//处于预览状态
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -207,6 +210,7 @@ public class VideoCameraActivity extends Activity {
             public void recordShort(final long time) {
                 iv_switch.setVisibility(View.GONE);
                 mIsRecordingVideo = false;
+                isPreviewing = false;
                 Toast.makeText(VideoCameraActivity.this,"录制时间太短，请重新录制", Toast.LENGTH_SHORT).show();
                 FileUtil.delFile(mNextVideoAbsolutePath);
                 mNextVideoAbsolutePath = null;
@@ -219,7 +223,7 @@ public class VideoCameraActivity extends Activity {
                 iv_switch.setVisibility(View.GONE);
                 mIsRecordingVideo = false;
                 if (!isStop) {
-                    stopRecordingVideo(false);
+                    stopRecordingVideo();
                 }
                 mCaptureLayout.startAlphaAnimation();
                 mCaptureLayout.startTypeBtnAnimator();
@@ -249,6 +253,7 @@ public class VideoCameraActivity extends Activity {
                 rl_preview.setVisibility(View.INVISIBLE);
                 iv_preview.setVisibility(View.GONE);
                 video_preview.stopPlayback();
+                isPreviewing = false;
                 //重置录制界面
                 showResetCameraLayout();
             }
@@ -330,8 +335,17 @@ public class VideoCameraActivity extends Activity {
     public void onResume() {
         super.onResume();
         startBackgroundThread();
+        resumeCnt++;
         if (mTextureView.isAvailable()) {
-            setupCamera(mTextureView.getWidth(), mTextureView.getHeight());
+            if(resumeCnt==1){
+                setupCamera(mTextureView.getWidth(), mTextureView.getHeight());
+            }else{
+                if(isPreviewing){
+                    mCaptureLayout.startTypeBtnAnimator();
+                }else{
+                    showResetCameraLayout();
+                }
+            }
         } else {
             mTextureView.setSurfaceTextureListener(mSurfaceTextureListener);
         }
@@ -348,7 +362,7 @@ public class VideoCameraActivity extends Activity {
     @Override
     public void onPause() {
         if(mIsRecordingVideo){
-            stopRecordingVideo(true);
+            mCaptureLayout.forceStopRecord();
         }
         closeCamera();
         stopBackgroundThread();
@@ -471,13 +485,13 @@ public class VideoCameraActivity extends Activity {
 
             Point displaySize = new Point();
             getWindowManager().getDefaultDisplay().getSize(displaySize);
-            int rotatedPreviewWidth = width;
-            int rotatedPreviewHeight = height;
+            //int rotatedPreviewWidth = width;
+            //int rotatedPreviewHeight = height;
             int maxPreviewWidth = displaySize.x;
             int maxPreviewHeight = displaySize.y;
             if (swappedDimensions) {
-                rotatedPreviewWidth = height;
-                rotatedPreviewHeight = width;
+                //rotatedPreviewWidth = height;
+                //rotatedPreviewHeight = width;
                 maxPreviewWidth = displaySize.y;
                 maxPreviewHeight = displaySize.x;
             }
@@ -491,11 +505,12 @@ public class VideoCameraActivity extends Activity {
             // Choose the sizes for camera preview and video recording
             StreamConfigurationMap map = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP);
             //Integer mSensorOrientation = characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
-            mVideoSize = chooseVideoSize(map.getOutputSizes(MediaRecorder.class),width, height);
+            mVideoSize = chooseVideoSize(map.getOutputSizes(MediaRecorder.class));
 
             //获取相机支持的最大拍照尺寸
             mCaptureSize = Collections.max(Arrays.asList(map.getOutputSizes(ImageFormat.JPEG)), new CompareSizeByArea());
-            mPreviewSize = Camera2Util.chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),rotatedPreviewWidth, rotatedPreviewHeight, maxPreviewWidth, maxPreviewHeight, mCaptureSize);
+            //mPreviewSize = Camera2Util.chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),rotatedPreviewWidth, rotatedPreviewHeight, maxPreviewWidth, maxPreviewHeight, mCaptureSize);
+            mPreviewSize = Camera2Util.chooseOptimalSize(map.getOutputSizes(SurfaceTexture.class),maxPreviewWidth, maxPreviewHeight, mVideoSize);
 
             configureTransform(width, height);
 
@@ -581,6 +596,7 @@ public class VideoCameraActivity extends Activity {
                         mCaptureLayout.startAlphaAnimation();
                         mCaptureLayout.startTypeBtnAnimator();
 
+                        isPreviewing = true;
                         Log.d(TAG,"保存图片成功");
                         break;
                 }
@@ -653,11 +669,11 @@ public class VideoCameraActivity extends Activity {
                 @Override
                 public void onConfigured(CameraCaptureSession cameraCaptureSession) {
                     //创建捕获请求
-                    mCaptureRequest = mPreviewBuilder.build();
                     mPreviewSession = cameraCaptureSession;
+                    mPreviewBuilder.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO);
                     //不停的发送获取图像请求，完成连续预览
                     try {
-                        mPreviewSession.setRepeatingRequest(mCaptureRequest, null, mBackgroundHandler);
+                        mPreviewSession.setRepeatingRequest(mPreviewBuilder.build(), null, mBackgroundHandler);
                     } catch (CameraAccessException e) {
                         e.printStackTrace();
                     }
@@ -737,7 +753,7 @@ public class VideoCameraActivity extends Activity {
             //闪光灯重置为未开启状态
             mPreviewBuilder.set(CaptureRequest.FLASH_MODE, CaptureRequest.FLASH_MODE_OFF);
             //继续开启预览
-            mPreviewSession.setRepeatingRequest(mCaptureRequest, null, mBackgroundHandler);
+            mPreviewSession.setRepeatingRequest(mPreviewBuilder.build(), null, mBackgroundHandler);
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -778,7 +794,6 @@ public class VideoCameraActivity extends Activity {
 
                 @Override
                 public void onConfigured(@NonNull CameraCaptureSession cameraCaptureSession) {
-                    mCaptureRequest = mPreviewBuilder.build();
                     mPreviewSession = cameraCaptureSession;
                     try {
                         mPreviewSession.setRepeatingRequest(mPreviewBuilder.build(), null, mBackgroundHandler);
@@ -799,7 +814,7 @@ public class VideoCameraActivity extends Activity {
         }
     }
     //结束录像
-    private void stopRecordingVideo(boolean shortTime) {
+    private void stopRecordingVideo() {
         mIsRecordingVideo = false;
         try {
             if(mPreviewSession!=null){
@@ -818,26 +833,20 @@ public class VideoCameraActivity extends Activity {
         } catch (Exception e) {
             e.printStackTrace();
         }
-        if(!shortTime) {
-            Log.d(TAG, "录制成功");
-            resultIntent = new Intent();
-            resultIntent.putExtra("videoPath", mNextVideoAbsolutePath);
-            boolean isOK= FileUtil.getVideoWH(mNextVideoAbsolutePath,resultIntent);
-            if(isOK){
-                video_preview.setVisibility(View.VISIBLE);
-                iv_preview.setVisibility(View.GONE);
-                video_preview.setVideoPath(mNextVideoAbsolutePath);
-                video_preview.requestFocus();
-                video_preview.start();
-                rl_preview.setVisibility(View.VISIBLE);
-            }else{
-                Toast.makeText(this,"录制失败，需要重启手机才能进行录制", Toast.LENGTH_SHORT).show();
-                invokeResetDelay();
-            }
-        }else {//录制时间过短，变成拍照
-            Toast.makeText(this,"录制时间太短，请重新录制", Toast.LENGTH_SHORT).show();
-            FileUtil.delFile(mNextVideoAbsolutePath);
-            mNextVideoAbsolutePath = null;
+        Log.d(TAG, "录制成功");
+        resultIntent = new Intent();
+        resultIntent.putExtra("videoPath", mNextVideoAbsolutePath);
+        boolean isOK= FileUtil.getVideoWH(mNextVideoAbsolutePath,resultIntent);
+        if(isOK){
+            isPreviewing = true;
+            video_preview.setVisibility(View.VISIBLE);
+            iv_preview.setVisibility(View.GONE);
+            video_preview.setVideoPath(mNextVideoAbsolutePath);
+            video_preview.requestFocus();
+            video_preview.start();
+            rl_preview.setVisibility(View.VISIBLE);
+        }else{
+            Toast.makeText(this,"录制失败，需要重启手机才能进行录制", Toast.LENGTH_SHORT).show();
             invokeResetDelay();
         }
     }
@@ -853,12 +862,35 @@ public class VideoCameraActivity extends Activity {
             mNextVideoAbsolutePath = getVideoFilePath();
         }
 
-        mMediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
-        mMediaRecorder.setVideoEncodingBitRate(1200*1280);
-        mMediaRecorder.setVideoFrameRate(30);
-        mMediaRecorder.setVideoSize(mVideoSize.getWidth(), mVideoSize.getHeight());
-        mMediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
-        mMediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+        // 这里有点投机取巧的方式，不过证明方法也是不错的
+        // 录制出来10S的视频，大概1.2M，清晰度不错，而且避免了因为手动设置参数导致无法录制的情况
+        // 手机一般都有这个格式CamcorderProfile.QUALITY_480P,因为单单录制480P的视频还是很大的，所以我们在手动根据预览尺寸配置一下videoBitRate,值越高越大
+        // QUALITY_QVGA清晰度一般，不过视频很小，一般10S才几百K
+        // 判断有没有这个手机有没有这个参数
+        if (CamcorderProfile.hasProfile(CamcorderProfile.QUALITY_480P)) {
+            CamcorderProfile profile = CamcorderProfile.get(CamcorderProfile.QUALITY_480P);
+            profile.videoBitRate = mPreviewSize.getWidth() * mPreviewSize.getHeight();
+            mMediaRecorder.setProfile(profile);
+            mMediaRecorder.setPreviewDisplay(new Surface(mTextureView.getSurfaceTexture()));
+        } else if (CamcorderProfile.hasProfile(CamcorderProfile.QUALITY_720P)) {
+            CamcorderProfile profile = CamcorderProfile.get(CamcorderProfile.QUALITY_720P);
+            profile.videoBitRate = mPreviewSize.getWidth() * mPreviewSize.getHeight();
+            mMediaRecorder.setProfile(profile);
+            mMediaRecorder.setPreviewDisplay(new Surface(mTextureView.getSurfaceTexture()));
+        } else if (CamcorderProfile.hasProfile(CamcorderProfile.QUALITY_QVGA)) {
+            mMediaRecorder.setProfile(CamcorderProfile.get(CamcorderProfile.QUALITY_QVGA));
+            mMediaRecorder.setPreviewDisplay(new Surface(mTextureView.getSurfaceTexture()));
+        } else if (CamcorderProfile.hasProfile(CamcorderProfile.QUALITY_CIF)) {
+            mMediaRecorder.setProfile(CamcorderProfile.get(CamcorderProfile.QUALITY_CIF));
+            mMediaRecorder.setPreviewDisplay(new Surface(mTextureView.getSurfaceTexture()));
+        }else{
+            mMediaRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
+            mMediaRecorder.setVideoEncodingBitRate(1200*1280);
+            mMediaRecorder.setVideoFrameRate(30);
+            mMediaRecorder.setVideoSize(mPreviewSize.getWidth(), mPreviewSize.getHeight());
+            mMediaRecorder.setVideoEncoder(MediaRecorder.VideoEncoder.H264);
+            mMediaRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
+        }
 
         mMediaRecorder.setOutputFile(mNextVideoAbsolutePath);
 
@@ -921,10 +953,9 @@ public class VideoCameraActivity extends Activity {
         }
     }
 
-    private static Size chooseVideoSize(Size[] choices, int width, int height) {
+    private static Size chooseVideoSize(Size[] choices) {
         for (Size size : choices) {
-            float ft=(float)size.getWidth()/(float)size.getHeight();
-            if (size.getWidth() <= 1300 && size.getWidth() <= height && ft > 1.5 && ft < 1.9) {
+            if (size.getWidth() == size.getHeight() * 4 / 3 && size.getWidth() <= 1080) {
                 return size;
             }
         }
